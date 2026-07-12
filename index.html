@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <title>Tavarakauppa</title>
+    <style>
+        body { background-color: #121212; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { background: #1e1e1e; padding: 25px; border-radius: 12px; width: 100%; max-width: 450px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); margin-bottom: 20px; }
+        h1 { text-align: center; color: #bb86fc; }
+        input, textarea { width: 100%; padding: 12px; margin: 8px 0; border-radius: 6px; border: 1px solid #333; background: #2c2c2c; color: white; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: #6200ea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 5px; }
+        .tuote-kortti { background: #2c2c2c; padding: 15px; margin-top: 15px; border-radius: 8px; border-left: 4px solid #6200ea; display: flex; justify-content: space-between; align-items: center; }
+        .loppu { border-left-color: #cf6679; }
+        .varastossa { color: #03dac6; }
+        .hinta-teksti { color: #bb86fc; cursor: pointer; text-decoration: underline; }
+        .kuvaus-teksti { font-size: 0.85em; color: #aaa; margin: 5px 0; }
+        .nappi-rivi { display: flex; gap: 5px; }
+        .btn-small { width: auto; padding: 5px 12px; background: #444; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>📦 Tavarakauppa</h1>
+        <input type="text" id="nimi" placeholder="Tuotteen nimi">
+        <textarea id="kuvaus" placeholder="Tuotekuvaus" rows="2"></textarea>
+        <input type="number" id="hinta" step="0.01" placeholder="Hinta (€)">
+        <input type="number" id="maara" placeholder="Määrä varastossa">
+        <button id="lisaaBtn">Lisää tuote</button>
+    </div>
+
+    <div class="container">
+        <input type="text" id="haku" placeholder="🔍 Hae tuotetta nimellä...">
+    </div>
+
+    <div id="tuoteLista" style="width: 100%; max-width: 450px;"></div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, updateDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyCzjkcQFSYlJw-BKS7RatdXdCAxkh_9O9U",
+        authDomain: "nallundaifirebase.firebaseapp.com",
+        projectId: "nallundaifirebase",
+        storageBucket: "nallundaifirebase.firebasestorage.app",
+        messagingSenderId: "324623937766",
+        appId: "1:324623937766:web:acde0ebc0237276fbe8b27",
+        measurementId: "G-XS0784L10C"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const colRef = collection(db, "tuotteet");
+
+    // Toiminnot
+    window.muutaMaaraa = async (id, nykyinenMaara, muutos) => {
+        await updateDoc(doc(db, "tuotteet", id), { maara: Math.max(0, nykyinenMaara + muutos) });
+    };
+
+    window.muutaHintaa = async (id, vanhaHinta) => {
+        const uusi = prompt("Syötä uusi hinta:", vanhaHinta);
+        if (uusi !== null && !isNaN(uusi)) await updateDoc(doc(db, "tuotteet", id), { hinta: parseFloat(uusi).toFixed(2) });
+    };
+
+    window.poistaTuote = async (id) => {
+        if(confirm("Poistetaanko tuote?")) await deleteDoc(doc(db, "tuotteet", id));
+    };
+
+    // Haku
+    document.getElementById('haku').addEventListener('input', (e) => {
+        const haku = e.target.value.toLowerCase();
+        document.querySelectorAll('.tuote-kortti').forEach(kortti => {
+            const nimi = kortti.getAttribute('data-nimi').toLowerCase();
+            kortti.style.display = nimi.includes(haku) ? 'flex' : 'none';
+        });
+    });
+
+    // Päivitys
+    onSnapshot(colRef, (snapshot) => {
+        const lista = document.getElementById('tuoteLista');
+        lista.innerHTML = '<h2>Varastotilanne</h2>';
+        snapshot.forEach((doc) => {
+            const t = doc.data();
+            const div = document.createElement('div');
+            div.className = `tuote-kortti ${t.maara == 0 ? 'loppu' : ''}`;
+            div.setAttribute('data-nimi', t.nimi);
+            div.innerHTML = `
+                <div>
+                    <strong>${t.nimi}</strong> - <span class="hinta-teksti" onclick="muutaHintaa('${doc.id}', '${t.hinta}')">${t.hinta}€</span>
+                    <div class="kuvaus-teksti">${t.kuvaus || ''}</div>
+                    <span class="${t.maara > 0 ? 'varastossa' : 'loppu'}">
+                        ${t.maara > 0 ? 'Varastossa: ' + t.maara : 'LOPPUUNMYYTY'}
+                    </span>
+                </div>
+                <div class="nappi-rivi">
+                    <button class="btn-small" onclick="muutaMaaraa('${doc.id}', ${t.maara}, 1)">+</button>
+                    <button class="btn-small" onclick="muutaMaaraa('${doc.id}', ${t.maara}, -1)">-</button>
+                    <button class="btn-small" style="background:#cf6679" onclick="poistaTuote('${doc.id}')">Poista</button>
+                </div>
+            `;
+            lista.appendChild(div);
+        });
+    });
+
+    document.getElementById('lisaaBtn').addEventListener('click', async () => {
+        const nimi = document.getElementById('nimi').value;
+        const kuvaus = document.getElementById('kuvaus').value;
+        const hintaRaw = document.getElementById('hinta').value;
+        const maaraRaw = document.getElementById('maara').value;
+        
+        if (nimi && hintaRaw) {
+            try {
+                await addDoc(colRef, { 
+                    nimi, 
+                    kuvaus, 
+                    hinta: parseFloat(hintaRaw).toFixed(2), 
+                    maara: parseInt(maaraRaw || 0) 
+                });
+                document.getElementById('nimi').value = '';
+                document.getElementById('kuvaus').value = '';
+                document.getElementById('hinta').value = '';
+                document.getElementById('maara').value = '';
+            } catch (e) {
+                console.error("Virhe tallennuksessa:", e);
+                alert("Tallennus epäonnistui!");
+            }
+        } else {
+            alert("Täytä nimi ja hinta!");
+        }
+    });
+</script>
+</body>
+</html>
